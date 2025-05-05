@@ -1,0 +1,168 @@
+1.EC2 + SSH + คำสั่ง Linux
+AWS Console → EC2 → Launch Instance
+เลือก Amazon Linux 2023
+เลือกประเภท: t2.micro (Free Tier)
+ตั้งชื่อ: ec2xxxxYYYY (xxxx=รหัส 4 ตัวท้าย, YYYY=รหัสส่วนตัว)
+Key pair name : Proceed without a key pair (Not recommended)
+Allow SSH traffic from Anywhere (default)
+instace เหมือนเดิมเลือกตัวที่สร้างแล้วกด Connect มุมขวาบนแล้วกด Connect อีกทีด้านใน EC2 Instance Connect
+พิมพ์สักคำสั่ง เช่น df -h
+
+
+2.EC2 + user-data ติดตั้ง Web Server
+เข้า EC2 เลือก Launch Instance
+ชื่อ : ec206991234
+t2.micro (default)
+Key pair name : Proceed without a key pair (Not recommended)
+Allow HTTPS traffic from the internet
+Allow HTTP traffic from the internet
+Adavanced details -> User data
+
+#!/bin/bash
+yum update -y
+yum install httpd -y
+echo "<center><h1>This is xxxx instance with the code yyyy that runs the Apache Webserver!</h1></center>" > /var/www/html/index.html
+systemctl start httpd
+systemctl enable httpd
+รอจนกว่าจะ 2/2 checks passed แล้วเข้า Public IPv4 address (http)
+
+3.S3 bucket + อัปโหลด + เปิด public link
+Create bucket
+ชื่อ : s302281234
+Object Ownership : ACLs enabled
+เอา Block all public access ออก
+Upload รูปภาพ แล้วกดเข้าที่รูปกด Actions มุมขวาบนแล้วเลือก Make public using ACL
+กดเข้าที่รูปใหม่แล้วเลือก Object URL
+
+4.S3 + Lifecycle → Glacier
+Create bucket
+ชื่อ : lambda06991234
+เข้าหน้า S3 bucket ที่สร้างแล้วเลือก Management เลือก Create lifecycle rule
+Apply to all objects in the bucket
+Transition current versions of objects between storage classes
+Choose storage class transitions : Glacier Instant Retrieval
+Days after object creation : 30
+
+5.Lambda → Create function → Author from scratch
+
+ชื่อ: lambdaxxxxYYYY
+
+Runtime: Python 3.13
+
+Role: ใช้ LabRole
+
+def lambda_handler(event, context):
+    text = event['body']
+    return len(text)
+
+test ด้วย
+{
+  "body": "Hello Bomb"
+}
+
+6.Lambda + S3 trigger
+เข้า Lambda เลือก Create function
+Author from scratch (default)
+ชื่อ : lambda06991234
+Runtime : Python 3.13
+Use an existing role : LabRole
+เลือก Add triger
+Select a source : S3
+Bucket : เลือก S3 1 อันที่สร้างมาก่อนหน้า (ใช้ S3 แบบ default)
+เลือก I acknowledge that using the same S3 bucket for both input and output is not recommended and that this configuration can cause recursive invocations, increased Lambda usage, and increased costs.
+แก้ Code เป็น
+def lambda_handler(event, context):
+    for record in event['Records']:
+        print(f"New file uploaded: {record['s3']['object']['key']}")
+
+เข้าหน้า S3 bucket ที่ผูกเอาไว้แล้ว Upload ภาพ
+กลับมาหน้า Lambda แล้วเข้า Monitor กดเข้า ViewCloudWatch logs แล้วเข้า Log streams ที่เพิ่มเข้ามา
+
+7.สร้าง Snapshot + Volume จาก Snapshot
+เข้า EC2 เลือก Launch Instance
+-ชื่อ : ec02281234
+
+เข้าหน้า EC2 แล้วไป tab ด้านซ้าย Snapshots เลือก Create snapshot
+-Resource type : Instance
+-ชื่อ : snap02281234
+-Inastance ID : เลือก EC2 ที่สร้างเอาไว้ก่อนหน้า
+เลือก Snapshots ที่สร้างเอาไว้กด Actions แล้วเลือก Create volume from snapshot จากนั้นกด Create volume และค่อยกลับไปเช็คที่หน้า Volumes แล้วเปลี่ยนชื่อ volume นั้น
+
+8.EBS ใหม่ + เชื่อม EC2 + Format/Mount
+เข้า EC2 เลือก Launch Instance
+-ชื่อ : ec206991234
+2)เข้าหน้า EC2 แล้วไป tab ด้านซ้าย Volumes เลือก Create volume แล้วเลือก Create volume อีกครั้ง
+-ปรับ Storage เป็น 1 GiB
+-เช็คให้ดีว่า Availability Zone ตรงกับ Instance ที่ Network ไหม
+3)เลือก Volume ที่สร้างแล้วเลือก Actions จากนั้น Attach volume
+-เลือก Instance กับ Device name (/dev/sdf) แล้วกด Attach volume
+4)กลับไปหน้า Instances แล้วเลือก Connect
+พิมพ์คำสั่งตามนี้
+lsblk
+sudo file -s /dev/xvdf
+sudo mkfs -t ext4 /dev/xvdf
+sudo mkdir /newvolume
+sudo mount /dev/xvdf /newvolume/
+df -h
+เข้าไปที่ ec202281234 -> Storage -> Block devices
+
+9.RDS + สร้าง DB จาก EC2
+เข้า EC2 เลือก Security Groups เลือก Create security group
+-ชื่อ
+กด Add rule ที่ Inbound rules 
+Type : MYSQL/Aurora
+Source : Anywhere
+แล้วเลือก Create security groups
+เข้า Aurora and RDS เลือก tab ด้านซ้าย Databases แล้วเลือก Create database
+-Engine type : MySQL
+-Templates : Free tier
+-Credentials management : Self managed และตั้งรหัสผ่าน
+-Connectivity ->ติ๊ก Public access
+-Existing VPC security groups : เลือก security rules ที่เลือกไว้ตอนแรก
+กด Create database
+เข้าหน้า database ที่สร้างเอาไว้ดู Endpoint ที่ tab Connectivity & security
+เข้าหน้า EC2 instance เลือกตัวที่สร้างแล้วกด Connect มุมขวาบนแล้วกด Connect อีกทีด้านใน EC2 Instance Connect พิมพ์คำสั่งตามนี้
+sudo su -
+yum update -y
+yum install mariadb105 -y
+mysql -h [your_endpoint_rds] -u admin -pBomb1234
+*ไม่มี []
+
+show databases;
+CREATE DATABASE CS332db;
+
+10.RDS + Read Replica
+เข้า EC2 เลือก Security Groups เลือก Create security group
+-ชื่อ
+-กด Add rule ที่ Inbound rules 
+Type : MYSQL/Aurora
+Source : Anywhere
+แล้วเลือก Create security groups
+เข้า Aurora and RDS เลือก tab ด้านซ้าย Databases แล้วเลือก Create database
+-Engine type : MySQL
+-Templates : Free tier
+-Credentials management : Self managed และตั้งรหัสผ่าน
+-Connectivity -> Public access
+-Existing VPC security groups : เลือก security rules ที่เลือกไว้ตอนแรก
+กด Create database
+เลือก database ที่สร้างเอาไว้แล้วให้กด Actions จากนั้นเลือก Create read replica
+-ชื่อ (DB instance identifier) : rrxxxxyyyy
+-เอา Enable Enhanced monitoring ออก
+จากนั้นเลือก Create read replica
+เข้า EC2 เลือก Security Groups เลือก Create security group
+-ชื่อ
+-กด Add rule ที่ Inbound rules 
+Type : MYSQL/Aurora
+Source : Anywhere
+แล้วเลือก Create security groups
+2)เข้า Aurora and RDS เลือก tab ด้านซ้าย Databases แล้วเลือก Create database
+-Engine type : MySQL
+-Templates : Free tier
+-Credentials management : Self managed และตั้งรหัสผ่าน
+-Connectivity -> Public access
+-Existing VPC security groups : เลือก security rules ที่เลือกไว้ตอนแรก
+กด Create database
+3)เลือก database ที่สร้างเอาไว้แล้วให้กด Actions จากนั้นเลือก Create read replica
+-ชื่อ (DB instance identifier) : rrxxxxyyyy
+-เอา Enable Enhanced monitoring ออก
+จากนั้นเลือก Create read replica
